@@ -17,6 +17,11 @@ If `buybytes` isn't installed, use `npx buybytes@latest` in its place
 buybytes scan --json --min 100MB
 ```
 
+Pick the mode from what the user wants: `--mode dev` (default) for developer
+leftovers, `--mode media` for screen recordings, videos, archives and apps,
+`--mode all` for everything. Apps, app caches and leftovers from deleted apps
+are in both.
+
 The report has `free_bytes`, `recommended_bytes`, `reclaimable_bytes`,
 `skipped_folders` and `items[]`. Each item has `id`, `category`, `title`,
 `detail`, `size_bytes`, `last_used`, `recommended`, `regenerable`,
@@ -55,5 +60,8 @@ buybytes clean --ids <id1,id2,...> --yes --json
   recommended.
 - Report `freed_bytes` and any `error` per item. Space that went to the Trash
   comes back when the user empties it.
+- To schedule cleanups, suggest
+  `buybytes clean --recommended --yes --quiet --if-free-below 30GB --notify`
+  in cron or launchd, but only set it up if the user asks.
 - Afterwards you can offer `buybytes share` for a short, fun post about the
   cleanup. It contains only sizes and categories, never paths.

@@ -15,27 +15,39 @@ import (
 type Category string
 
 const (
-	CatAgents    Category = "Git worktrees"
-	CatDev       Category = "Dev builds"
-	CatToolchain Category = "Toolchains & SDKs"
-	CatDevices   Category = "Emulators & simulators"
-	CatAI        Category = "AI models"
-	CatAIData    Category = "AI chats & app caches"
-	CatDownloads Category = "Downloads & media"
-	CatCaches    Category = "Package caches"
-	CatInfo      Category = "Look at yourself"
+	CatAgents       Category = "Git worktrees"
+	CatDev          Category = "Dev builds"
+	CatToolchain    Category = "Toolchains & SDKs"
+	CatDevices      Category = "Emulators & simulators"
+	CatAI           Category = "AI models"
+	CatAIData       Category = "AI chats & app caches"
+	CatApps         Category = "Apps you don't use"
+	CatAppCaches    Category = "App caches"
+	CatAppLeftovers Category = "Leftovers from deleted apps"
+	CatRecordings   Category = "Screen & Zoom recordings"
+	CatVideos       Category = "Big videos"
+	CatArchives     Category = "Archives & installers"
+	CatDownloads    Category = "Downloads & media"
+	CatCaches       Category = "Package caches"
+	CatInfo         Category = "Look at yourself"
 )
 
 // CategoryHint is a one-line explanation shown next to each category.
 var CategoryHint = map[Category]string{
-	CatAgents:    "extra checkouts left by coding agents and parallel work",
-	CatAIData:    "old AI chat history, editor and AI app caches",
-	CatDev:       "temporary, they build again next time",
-	CatToolchain: "SDK versions, reinstall with one command",
-	CatDevices:   "re-download or recreate when you need them",
-	CatAI:        "model weights, most can be downloaded again",
-	CatDownloads: "files you downloaded and probably forgot",
-	CatCaches:    "downloaded again when needed",
+	CatAgents:       "extra checkouts left by coding agents and parallel work",
+	CatAIData:       "old AI chat history, editor and AI app caches",
+	CatDev:          "temporary, they build again next time",
+	CatToolchain:    "SDK versions, reinstall with one command",
+	CatDevices:      "re-download or recreate when you need them",
+	CatAI:           "model weights, most can be downloaded again",
+	CatDownloads:    "files you downloaded and probably forgot",
+	CatApps:         "not opened in a while · removes the app with its cache and settings",
+	CatAppCaches:    "rebuilt when the app needs it",
+	CatAppLeftovers: "cache and settings of apps you already deleted",
+	CatRecordings:   "screen recordings, screenshots and Zoom meetings",
+	CatVideos:       "large video files outside Downloads",
+	CatArchives:     "zips, disk images and installers you probably unpacked",
+	CatCaches:       "downloaded again when needed",
 }
 
 // Progress reports overall progress (0 to 1) and what is happening now.
@@ -49,7 +61,7 @@ func Bar(frac float64, width int) string {
 }
 
 // CategoryOrder is the display order.
-var CategoryOrder = []Category{CatAgents, CatDev, CatToolchain, CatDevices, CatAI, CatAIData, CatDownloads, CatCaches, CatInfo}
+var CategoryOrder = []Category{CatAgents, CatDev, CatToolchain, CatDevices, CatAI, CatAIData, CatApps, CatAppCaches, CatAppLeftovers, CatRecordings, CatVideos, CatArchives, CatDownloads, CatCaches, CatInfo}
 
 // Item is one thing the user can keep or remove.
 type Item struct {

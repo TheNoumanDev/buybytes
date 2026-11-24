@@ -31,10 +31,11 @@ type Env struct {
 	// hung waiting for a permission prompt). They were skipped, not scanned.
 	Blocked []string
 
-	blockedMu sync.Mutex
-	readable  map[string]bool
-	refOnce   sync.Once
-	refText   []refFile
+	blockedMu     sync.Mutex
+	readable      map[string]bool
+	refOnce       sync.Once
+	refText       []refFile
+	skipDiscovery bool
 }
 
 type refFile struct{ path, text string }
@@ -72,7 +73,17 @@ const (
 // NewEnv discovers projects under home. progress may be nil.
 // Project discovery counts as the first DiscoveryShare of the progress bar.
 func NewEnv(home string, minSize int64, progress Progress) *Env {
+	return NewEnvMode(home, minSize, ModeDev, progress)
+}
+
+// NewEnvMode is NewEnv for a mode; modes that don't need projects skip the
+// (slow) project discovery.
+func NewEnvMode(home string, minSize int64, mode Mode, progress Progress) *Env {
 	e := &Env{Home: home, Now: time.Now(), MinSize: minSize}
+	if !mode.NeedsProjects() {
+		e.skipDiscovery = true
+		return e
+	}
 	if progress == nil {
 		progress = func(float64, string) {}
 	}

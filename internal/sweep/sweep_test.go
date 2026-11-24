@@ -344,3 +344,106 @@ func TestSharePostFitsATweetAndLeaksNoPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestAppBundlesAreTheOnlyThingOutsideHome(t *testing.T) {
+	for _, p := range []string{"/Applications/Slack.app", "/Applications/Adobe Premiere Pro 2026/Adobe Premiere Pro 2026.app"} {
+		if err := CheckSafe("/Users/x", p); err != nil {
+			t.Errorf("%s should be removable: %v", p, err)
+		}
+	}
+	for _, p := range []string{"/Applications", "/Applications/Utilities", "/Applications/Slack.app/Contents",
+		"/Applications/a/b/C.app", "/Applications/X.app/Contents/Y.app", "/System/Applications/Mail.app", "/usr/local/bin"} {
+		if CheckSafe("/Users/x", p) == nil {
+			t.Errorf("%s must be refused", p)
+		}
+	}
+}
+
+func TestModes(t *testing.T) {
+	if m, err := ParseMode(""); err != nil || m != ModeDev {
+		t.Error("default mode should be dev")
+	}
+	if _, err := ParseMode("everything"); err == nil {
+		t.Error("unknown mode accepted")
+	}
+	names := func(m Mode) map[string]bool {
+		out := map[string]bool{}
+		for _, s := range Scanners() {
+			if s.in(m) {
+				out[s.Name] = true
+			}
+		}
+		return out
+	}
+	dev, media, all := names(ModeDev), names(ModeMedia), names(ModeAll)
+	if dev["Big videos"] || !media["Big videos"] || media["Project build folders"] || !dev["Apps"] || !media["Apps"] {
+		t.Errorf("wrong scanners per mode: dev=%v media=%v", dev, media)
+	}
+	if len(all) != len(Scanners()) {
+		t.Error("all mode should run every scanner")
+	}
+	if ModeMedia.NeedsProjects() || !ModeDev.NeedsProjects() {
+		t.Error("only media mode skips project discovery")
+	}
+}
+
+func TestRecordingsAndArchives(t *testing.T) {
+	home := t.TempDir()
+	desk := filepath.Join(home, "Desktop")
+	mkfile(t, filepath.Join(desk, "Screenshot 2026-08-06 at 1.37.59 PM.png"), 2<<20, 60*day)
+	mkfile(t, filepath.Join(desk, "Screenshot 2026-11-20 at 9.00.00 AM.png"), 2<<20, 2*day) // too new
+	mkfile(t, filepath.Join(desk, "Screen Recording 2026-07-01 at 10.00.00.mov"), 50<<20, 90*day)
+	mkfile(t, filepath.Join(desk, "IMG_0004.MOV"), 30<<20, 60*day)
+	mkfile(t, filepath.Join(desk, "taxes.pdf"), 1<<20, 300*day)
+	mkfile(t, filepath.Join(home, "Documents/Zoom/2026-05-01 Standup/video.mp4"), 10<<20, 100*day)
+	mkfile(t, filepath.Join(desk, "old-export.zip"), 200<<20, 90*day)
+	mkfile(t, filepath.Join(home, "Documents/Photos Library.photoslibrary/originals/big.zip"), 200<<20, 90*day)
+	e := NewEnvMode(home, 0, ModeMedia, nil)
+	got := map[string]Item{}
+	for _, it := range append(ScanRecordings(e), ScanArchives(e)...) {
+		got[it.Title] = it
+	}
+	for _, want := range []string{"1 old screenshots", "1 screen recordings", "1 phone photos & videos on Desktop", "1 Zoom meeting recordings", "old-export.zip"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("missing %q in %v", want, keys(got))
+		}
+	}
+	for _, it := range got {
+		if it.Recommended {
+			t.Errorf("%s is the user's own content and must not be pre-selected", it.Title)
+		}
+		for _, p := range it.Paths {
+			if strings.Contains(p, "taxes.pdf") || strings.Contains(p, ".photoslibrary") || strings.Contains(p, "11.20") {
+				t.Errorf("offered %s", p)
+			}
+		}
+	}
+}
+
+func TestLeftoversFromDeletedApps(t *testing.T) {
+	home := t.TempDir()
+	gone := filepath.Join(home, "Library/Application Support/com.example.goneapp")
+	mkfile(t, filepath.Join(gone, "data.db"), 4096, 200*day)
+	age(t, gone, 200*day)
+	fresh := filepath.Join(home, "Library/Application Support/com.example.stillwriting")
+	mkfile(t, filepath.Join(fresh, "data.db"), 4096, 0)
+	mkfile(t, filepath.Join(home, "Library/Application Support/com.apple.something/x"), 4096, 200*day)
+	var found bool
+	for _, it := range ScanApps(NewEnvMode(home, 0, ModeMedia, nil)) {
+		if it.Category != CatAppLeftovers {
+			continue
+		}
+		switch it.Title {
+		case "com.example.goneapp":
+			found = true
+			if it.Recommended {
+				t.Error("leftovers must not be pre-selected")
+			}
+		default:
+			t.Errorf("unexpected leftover %s", it.Title)
+		}
+	}
+	if !found {
+		t.Error("leftovers of a deleted app were not found")
+	}
+}

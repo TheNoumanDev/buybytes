@@ -79,6 +79,7 @@ const secReadOnly = 2
 type model struct {
 	home    string
 	minSize int64
+	mode    sweep.Mode
 	purge   bool
 	dryRun  bool
 
@@ -164,20 +165,20 @@ func verdictStyle(v string) lipgloss.Style {
 }
 
 // Run starts the interactive UI.
-func Run(home string, minSize int64, purge, dryRun bool) error {
+func Run(home string, minSize int64, mode sweep.Mode, purge, dryRun bool) error {
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
 	sp.Style = lipgloss.NewStyle().Foreground(accent)
 	m := &model{
-		home: home, minSize: minSize, purge: purge, dryRun: dryRun, spin: sp,
+		home: home, minSize: minSize, mode: mode, purge: purge, dryRun: dryRun, spin: sp,
 		selected: map[int]bool{}, expanded: map[int]bool{}, now: time.Now(), freeBefore: sweep.FreeBytes(home),
 	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	go func() {
 		start := time.Now()
 		progress := func(f float64, s string) { p.Send(progressMsg{f, s}) }
-		env := sweep.NewEnv(home, minSize, progress)
-		items := sweep.ScanAll(env, progress)
+		env := sweep.NewEnvMode(home, minSize, mode, progress)
+		items := sweep.Scan(env, mode, progress)
 		p.Send(scannedMsg{items: items, projects: len(env.Projects), took: time.Since(start), blocked: env.Blocked})
 	}()
 	final, err := p.Run()
@@ -683,7 +684,10 @@ func (m *model) viewList() string {
 		{"SPACE", "select (category = all)"}, {"ENTER", "review & remove"}, {"A", "whole section"},
 		{"S", "smaller"}, {"→", "paths"}, {"Q", "quit"},
 	})
-	subText := fmt.Sprintf(" scanned %d projects in %s", m.projects, m.took.Round(time.Second))
+	subText := fmt.Sprintf(" %s mode · scanned %d projects in %s", m.modeName(), m.projects, m.took.Round(time.Second))
+	if m.mode == sweep.ModeMedia {
+		subText = fmt.Sprintf(" media mode · scanned in %s", m.took.Round(time.Second))
+	}
 	if len(m.blocked) > 0 {
 		var names []string
 		for _, b := range m.blocked {
@@ -981,4 +985,14 @@ func copyText(s string) error {
 	cmd := exec.Command("pbcopy")
 	cmd.Stdin = strings.NewReader(s)
 	return cmd.Run()
+}
+
+func (m *model) modeName() string {
+	switch m.mode {
+	case sweep.ModeMedia:
+		return "media"
+	case sweep.ModeAll:
+		return "all"
+	}
+	return "developer"
 }

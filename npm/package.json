@@ -1,6 +1,6 @@
 {
   "name": "buybytes",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Buy back your bytes! Free the disk space developers forget about: build folders, old simulators, emulators, AI models, agent worktrees, AI chat leftovers.",
   "bin": {
     "buybytes": "bin/buybytes.js"

@@ -150,7 +150,8 @@ func ScanDownloads(e *Env) []Item {
 		})
 	}
 
-	// Desktop screen recordings pile up silently.
+	// Other old videos on the Desktop (screen captures and AirDropped IMG_
+	// files are grouped by ScanRecordings).
 	desk := filepath.Join(e.Home, "Desktop")
 	if !e.Readable(desk) {
 		return items
@@ -160,7 +161,7 @@ func ScanDownloads(e *Env) []Item {
 		var size int64
 		for _, en := range entries {
 			n := en.Name()
-			if en.IsDir() || !videoExts[strings.ToLower(filepath.Ext(n))] {
+			if en.IsDir() || !videoExts[strings.ToLower(filepath.Ext(n))] || isScreenCapture(n) || strings.HasPrefix(n, "IMG_") {
 				continue
 			}
 			info, err := en.Info()
@@ -173,7 +174,7 @@ func ScanDownloads(e *Env) []Item {
 		if len(recs) > 0 {
 			items = append(items, Item{
 				Category: CatDownloads, Title: fmt.Sprintf("%d old videos on Desktop", len(recs)), Paths: recs, Size: size,
-				Detail: "screen recordings and clips older than 30 days",
+				Detail: "videos older than 30 days",
 			})
 		}
 	}

@@ -35,6 +35,9 @@ func CheckSafe(home, path string) error {
 	if clean != path {
 		return fmt.Errorf("refusing unclean path %q", path)
 	}
+	if isAppBundle(clean) {
+		return nil // an app in /Applications (top level or one folder down)
+	}
 	rel, err := filepath.Rel(home, clean)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 		return fmt.Errorf("refusing path outside home: %s", path)
@@ -163,4 +166,15 @@ func EmptyFromTrash(home string, moved []string) error {
 func lexists(p string) bool {
 	_, err := os.Lstat(p)
 	return err == nil
+}
+
+// isAppBundle: /Applications/X.app or /Applications/Folder/X.app, nothing else
+// outside the home folder.
+func isAppBundle(p string) bool {
+	rel, err := filepath.Rel("/Applications", p)
+	if err != nil || strings.HasPrefix(rel, "..") || !strings.HasSuffix(p, ".app") {
+		return false
+	}
+	n := len(strings.Split(rel, string(filepath.Separator)))
+	return n == 1 || (n == 2 && !strings.HasSuffix(filepath.Dir(rel), ".app"))
 }

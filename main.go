@@ -23,19 +23,22 @@ import (
 	"github.com/muesli/termenv"
 )
 
-var version = "0.2.0"
+var version = "0.3.0"
 
-const usage = `buybytes: free the disk space developers forget about
+const usage = `buybytes: buy back your bytes
 
 Usage:
   buybytes                      scan, then pick what to remove (interactive)
+  buybytes media                the same, for recordings, videos, archives and apps
   buybytes scan [--json]        scan and print what was found
   buybytes clean --ids a,b      remove items by id (see scan --show-ids)
   buybytes clean --recommended  remove everything marked recommended
   buybytes share [--copy|--x]   a fun post about your last cleanup
   buybytes skill install        teach Claude Code / Codex to use buybytes
+  buybytes mcp                  run as an MCP server for coding agents
 
 Flags:
+  --mode MODE     dev (default: developer leftovers), media, or all
   --min SIZE      hide items smaller than SIZE (default 100MB)
   --json          machine-readable output (for scripts and coding agents)
   --all           scan: also list "your call" items under 300MB
@@ -43,6 +46,12 @@ Flags:
   --purge         delete permanently instead of moving to the Trash
   --dry-run       show what would be removed, remove nothing
   --yes           don't ask for confirmation (clean only)
+
+Running as a job (cron, launchd, agents):
+  --quiet               print nothing unless something goes wrong
+  --if-free-below SIZE  clean only when free space is below SIZE
+  --notify              show a macOS notification with the result
+  e.g. buybytes clean --recommended --yes --quiet --if-free-below 30GB --notify
 
 Nothing is removed without your confirmation. By default things go to the
 Trash, so space comes back when you empty it (or use --purge).
@@ -67,7 +76,20 @@ func main() {
 	showIDs := fs.Bool("show-ids", false, "")
 	copyFlag := fs.Bool("copy", false, "")
 	xFlag := fs.Bool("x", false, "")
+	modeFlag := fs.String("mode", "dev", "")
+	quietFlag := fs.Bool("quiet", false, "")
+	belowFlag := fs.String("if-free-below", "", "")
+	notifyFlag := fs.Bool("notify", false, "")
 	_ = fs.Parse(args)
+	if m, err := sweep.ParseMode(*modeFlag); err != nil {
+		fail("%v", err)
+	} else {
+		mode = m
+	}
+	quiet, notify = *quietFlag, *notifyFlag
+	if cmd == "media" {
+		cmd, mode = "ui", sweep.ModeMedia
+	}
 
 	minSize, err := parseSize(*minFlag)
 	if err != nil {
@@ -84,13 +106,27 @@ func main() {
 			runScan(home, minSize, *jsonOut, false, true, true)
 			return
 		}
-		if err := tui.Run(home, minSize, *purge, *dryRun); err != nil {
+		if err := tui.Run(home, minSize, mode, *purge, *dryRun); err != nil {
 			fail("%v", err)
 		}
 	case "scan":
 		runScan(home, minSize, *jsonOut, *recommended, *all, *showIDs)
 	case "clean":
+		if *belowFlag != "" {
+			limit, err := parseSize(*belowFlag)
+			if err != nil {
+				fail("bad --if-free-below: %v", err)
+			}
+			if free := sweep.FreeBytes(home); free >= limit {
+				if !quiet && !*jsonOut {
+					fmt.Printf("%s free, above %s: nothing to do.\n", sweep.HumanSize(free), sweep.HumanSize(limit))
+				}
+				return
+			}
+		}
 		runClean(home, minSize, *ids, *recommended, *purge, *dryRun, *yes, *jsonOut)
+	case "mcp":
+		runMCP(home)
 	case "share":
 		runShare(home, *copyFlag, *xFlag)
 	case "skill":
@@ -109,13 +145,20 @@ func main() {
 
 var blocked []string
 
+var (
+	mode   = sweep.ModeDev
+	quiet  bool // job mode: no output unless something fails
+	notify bool // job mode: macOS notification with the result
+)
+
 // forceColor makes `scan` output colour even when not a terminal (demo screenshots).
 var forceColor bool
 
-func scan(home string, minSize int64, quiet bool) []sweep.Item {
+func scan(home string, minSize int64, silent bool) []sweep.Item {
+	silent = silent || quiet
 	tty := isatty.IsTerminal(os.Stderr.Fd())
 	progress := func(f float64, s string) {
-		if quiet || !tty {
+		if silent || !tty {
 			return
 		}
 		if len(s) > 50 {
@@ -124,11 +167,15 @@ func scan(home string, minSize int64, quiet bool) []sweep.Item {
 		fmt.Fprintf(os.Stderr, "\r\033[K  %s %3d%%  %s", sweep.Bar(f, 30), int(f*100), s)
 	}
 	start := time.Now()
-	env := sweep.NewEnv(home, minSize, progress)
-	items := sweep.ScanAll(env, progress)
+	env := sweep.NewEnvMode(home, minSize, mode, progress)
+	items := sweep.Scan(env, mode, progress)
 	blocked = env.Blocked
-	if !quiet {
-		fmt.Fprintf(os.Stderr, "\r\033[K  scanned %d projects in %s\n", len(env.Projects), time.Since(start).Round(time.Second))
+	if !silent {
+		what := fmt.Sprintf("%d projects", len(env.Projects))
+		if !mode.NeedsProjects() {
+			what = "your media folders and apps"
+		}
+		fmt.Fprintf(os.Stderr, "\r\033[K  scanned %s in %s\n", what, time.Since(start).Round(time.Second))
 	}
 	return items
 }
@@ -313,12 +360,19 @@ func runClean(home string, minSize int64, ids string, recommended, purge, dryRun
 		fmt.Fprintf(os.Stderr, "  no removable item with id %s (already gone or read-only)\n", id)
 	}
 	if len(picked) == 0 {
+		if quiet || (recommended && ids == "") {
+			if !quiet && !asJSON {
+				fmt.Println("Nothing recommended to remove right now.")
+			}
+			return // a job with nothing to do is not an error
+		}
 		fail("nothing to remove")
 	}
+	talk := !asJSON && !quiet
 	var total int64
 	for _, it := range picked {
 		total += it.Size
-		if !asJSON {
+		if talk {
 			fmt.Printf("  %8s  %s\n", sweep.HumanSize(it.Size), it.Title)
 		}
 	}
@@ -343,7 +397,7 @@ func runClean(home string, minSize int64, ids string, recommended, purge, dryRun
 	}
 	var rows []outRow
 	var removed []sweep.Item
-	showBar := !asJSON && isatty.IsTerminal(os.Stderr.Fd())
+	showBar := talk && isatty.IsTerminal(os.Stderr.Fd())
 	var done int64
 	for n, it := range picked {
 		if showBar {
@@ -371,6 +425,22 @@ func runClean(home string, minSize int64, ids string, recommended, purge, dryRun
 		fmt.Fprintf(os.Stderr, "\r\033[K  %s 100%%\n", sweep.Bar(1, 30))
 	}
 	freed := sweep.FreeBytes(home) - before
+	if notify && !dryRun {
+		msg := fmt.Sprintf("Cleaned %s (%d items)", sweep.HumanSize(total), len(removed))
+		if !purge {
+			msg += ", in the Trash"
+		}
+		if n := len(picked) - len(removed); n > 0 {
+			msg += fmt.Sprintf(" · %d failed", n)
+		}
+		_ = exec.Command("osascript", "-e", fmt.Sprintf("display notification %q with title %q", msg, "buybytes")).Run()
+	}
+	if len(removed) < len(picked) && quiet {
+		os.Exit(1) // let cron/launchd see the failure; errors were printed above
+	}
+	if quiet {
+		return
+	}
 	if asJSON {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"dry_run": dryRun, "purge": purge, "selected_bytes": total, "freed_bytes": freed, "results": rows,
@@ -409,6 +479,8 @@ func parseSize(s string) (int64, error) {
 		mult, s = 1<<20, strings.TrimSuffix(s, "M")
 	case strings.HasSuffix(s, "G"):
 		mult, s = 1<<30, strings.TrimSuffix(s, "G")
+	case strings.HasSuffix(s, "T"):
+		mult, s = 1<<40, strings.TrimSuffix(s, "T")
 	}
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {

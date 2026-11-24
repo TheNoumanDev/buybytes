@@ -14,10 +14,25 @@ one before it suggests removing it:
 | **Emulators & simulators**: Android emulators, unused system images, simulator runtimes, broken simulators | Last-booted date. Emulators that are running are never offered |
 | **AI models**: Hugging Face, Ollama, LM Studio, `ckpts/` folders inside repos | Whether any of your projects mention the model, and when its weights were last read |
 | **AI chats & app caches**: Claude Code, Codex and Gemini CLI chat history, Claude Code temp files, Cursor/VS Code/Claude app caches, editor state for deleted folders | Chats for folders that no longer exist, or older than 30 days. Memory notes and recent chats are never offered. App caches only while the app is closed |
+| **Apps you don't use**: every app in /Applications with its size and last-opened date | Not opened in 90+ days → "probably remove". Removing an app also takes its cache, settings and saved state, which dragging it to the Trash leaves behind. Open apps and work device-management apps are never offered |
+| **App caches** and **leftovers from deleted apps** | Caches of installed apps are rebuilt when needed. Leftovers of apps you already deleted (untouched for 90+ days) are your call |
 | **Downloads & media**: movies, whole seasons, old `.apk`/`.ipa`/`.dmg` files, big forgotten folders | Age, and whether the file is something you already installed |
 | **Package caches**: npm, Yarn, Bun, uv, pip, Homebrew, CocoaPods, SwiftPM, Go, Docker | Regenerable ones are recommended |
 
 ![The buybytes checklist](docs/screenshots/checklist.png)
+
+## Modes
+
+| Mode | What it looks at |
+|---|---|
+| `dev` (default) | Everything developer: builds, toolchains, simulators, emulators, AI models and chats, worktrees, package caches, plus apps, recordings and Downloads |
+| `media` | Screen recordings, screenshots, Zoom meetings, big videos, archives and installers, Downloads, apps. Skips project discovery, so it takes seconds |
+| `all` | Both |
+
+```bash
+buybytes media            # same as buybytes --mode media
+buybytes scan --mode all
+```
 
 ## Install
 
@@ -114,6 +129,33 @@ Or as a Claude Code plugin:
 /plugin install buybytes --marketplace TheNoumanDev/buybytes
 ```
 
+## Run it as a job
+
+For cron, launchd or an agent on a schedule: clean only when space is low,
+stay silent, and tell you with a notification.
+
+```bash
+buybytes clean --recommended --yes --quiet --if-free-below 30GB --notify
+```
+
+It exits 0 when there's nothing to do and 1 if something couldn't be removed.
+Removed items go to the Trash, so add `--purge` if the job should free space
+immediately. A crontab line for every morning at 9:
+
+```
+0 9 * * * /usr/local/bin/buybytes clean --recommended --yes --quiet --if-free-below 30GB --notify
+```
+
+## MCP server
+
+`buybytes mcp` runs an MCP server over stdio with three tools: `scan`,
+`clean` (ids only, refuses read-only items) and `free_space`. Add it to
+Claude Code:
+
+```bash
+claude mcp add buybytes -- buybytes mcp
+```
+
 ## Build
 
 ```bash
@@ -128,9 +170,6 @@ Hugging Face, Ollama, Docker, Downloads) also apply to Windows and Linux.
 
 ## Roadmap
 
-- Modes: `buybytes --mode media` for screen recordings, Zoom recordings,
-  movies, zips and APKs (developer mode stays the default)
-- An MCP server and a quiet mode so agents can run cleanups as a job
 - Homebrew tap
 - Windows and Linux paths
 - `buybytes watch` to warn when free space drops

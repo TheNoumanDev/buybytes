@@ -10,41 +10,99 @@ import (
 // DiscoveryShare is the part of the progress bar used by project discovery.
 const DiscoveryShare = 0.3
 
+// Mode picks which scanners run.
+type Mode string
+
+const (
+	ModeDev   Mode = "dev"   // developer leftovers (the default)
+	ModeMedia Mode = "media" // recordings, videos, archives, downloads, apps
+	ModeAll   Mode = "all"   // everything
+)
+
+// ParseMode reads a --mode value.
+func ParseMode(s string) (Mode, error) {
+	switch m := Mode(strings.ToLower(strings.TrimSpace(s))); m {
+	case ModeDev, ModeMedia, ModeAll:
+		return m, nil
+	case "":
+		return ModeDev, nil
+	}
+	return "", fmt.Errorf("unknown mode %q (use dev, media or all)", s)
+}
+
+// NeedsProjects reports whether the mode's scanners use project discovery.
+func (m Mode) NeedsProjects() bool { return m != ModeMedia }
+
 // Scanner produces items. Items may leave Size at 0; the runner sizes Paths.
 type Scanner struct {
-	Name string
-	Run  func(e *Env) []Item
+	Name  string
+	Run   func(e *Env) []Item
+	Modes []Mode // modes besides "all" that include it
 }
+
+func (s Scanner) in(m Mode) bool {
+	if m == ModeAll {
+		return true
+	}
+	for _, x := range s.Modes {
+		if x == m {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	dev   = []Mode{ModeDev}
+	media = []Mode{ModeMedia}
+	both  = []Mode{ModeDev, ModeMedia}
+)
 
 // Scanners is the full list, in display order.
 func Scanners() []Scanner {
 	return []Scanner{
-		{"Agent worktrees", ScanWorktrees},
-		{"Project build folders", ScanProjectArtifacts},
-		{"Xcode", ScanXcode},
-		{"Gradle", ScanGradle},
-		{"Flutter versions (fvm)", ScanFVM},
-		{"Android emulators", ScanAndroid},
-		{"iOS simulators", ScanSimulators},
-		{"AI models", ScanAIModels},
-		{"AI chats & app caches", ScanAIData},
-		{"Downloads", ScanDownloads},
-		{"Package caches", ScanCaches},
-		{"Docker", ScanDocker},
-		{"Device backups", ScanBackups},
+		{"Agent worktrees", ScanWorktrees, dev},
+		{"Project build folders", ScanProjectArtifacts, dev},
+		{"Xcode", ScanXcode, dev},
+		{"Gradle", ScanGradle, dev},
+		{"Flutter versions (fvm)", ScanFVM, dev},
+		{"Android emulators", ScanAndroid, dev},
+		{"iOS simulators", ScanSimulators, dev},
+		{"AI models", ScanAIModels, dev},
+		{"AI chats & app caches", ScanAIData, dev},
+		{"Apps", ScanApps, both},
+		{"Downloads", ScanDownloads, both},
+		{"Screen & Zoom recordings", ScanRecordings, both},
+		{"Big videos", ScanVideos, media},
+		{"Archives & installers", ScanArchives, media},
+		{"Package caches", ScanCaches, dev},
+		{"Docker", ScanDocker, dev},
+		{"Device backups", ScanBackups, both},
 	}
 }
 
-// ScanAll runs every scanner concurrently, sizes items, drops small ones and
-// sorts: recommended first, then by category order and size.
-func ScanAll(e *Env, progress Progress) []Item {
+// ScanAll runs the developer-mode scanners.
+func ScanAll(e *Env, progress Progress) []Item { return Scan(e, ModeDev, progress) }
+
+// Scan runs the mode's scanners concurrently, sizes items, drops small ones
+// and sorts them for display.
+func Scan(e *Env, mode Mode, progress Progress) []Item {
 	if progress == nil {
 		progress = func(float64, string) {}
 	}
 	var mu sync.Mutex
 	var all []Item
 	var wg sync.WaitGroup
-	scanners := Scanners()
+	var scanners []Scanner
+	for _, s := range Scanners() {
+		if s.in(mode) {
+			scanners = append(scanners, s)
+		}
+	}
+	share := DiscoveryShare
+	if e.skipDiscovery {
+		share = 0
+	}
 	pending := map[string]bool{}
 	for _, s := range scanners {
 		pending[s.Name] = true
@@ -64,7 +122,7 @@ func ScanAll(e *Env, progress Progress) []Item {
 			}
 		}
 		done := len(scanners) - len(left)
-		progress(DiscoveryShare+(1-DiscoveryShare)*float64(done)/float64(len(scanners)), label)
+		progress(share+(1-share)*float64(done)/float64(len(scanners)), label)
 	}
 	mu.Lock()
 	report()
