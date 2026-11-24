@@ -1,0 +1,35 @@
+{
+  "name": "buybytes",
+  "version": "0.2.0",
+  "description": "Buy back your bytes! Free the disk space developers forget about: build folders, old simulators, emulators, AI models, agent worktrees, AI chat leftovers.",
+  "bin": {
+    "buybytes": "bin/buybytes.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": [
+    "disk",
+    "cleanup",
+    "cli",
+    "flutter",
+    "xcode",
+    "simulator",
+    "node_modules",
+    "macos",
+    "ai",
+    "claude"
+  ],
+  "license": "MIT"
+}

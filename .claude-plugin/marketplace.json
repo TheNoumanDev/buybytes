@@ -1,0 +1,11 @@
+{
+  "name": "buybytes",
+  "owner": { "name": "buybytes" },
+  "plugins": [
+    {
+      "name": "buybytes",
+      "source": "./",
+      "description": "Free disk space on a developer's Mac with the buybytes CLI."
+    }
+  ]
+}

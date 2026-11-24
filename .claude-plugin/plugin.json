@@ -1,0 +1,6 @@
+{
+  "name": "buybytes",
+  "version": "0.2.0",
+  "description": "Free disk space on a developer's Mac: build folders, old simulators and emulators, AI models, agent worktrees, AI chat leftovers. Scans, explains, and removes only what you approve.",
+  "keywords": ["disk", "cleanup", "storage", "macos", "flutter", "xcode"]
+}

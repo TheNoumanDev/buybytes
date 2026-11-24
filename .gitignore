@@ -1,0 +1,6 @@
+/buybytes
+*.test
+/npm/bin/buybytes-darwin-*
+/npm/*.tgz
+/npm/README.md
+/npm/LICENSE
